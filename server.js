@@ -3,7 +3,7 @@ import bodyParser from "body-parser";
 import bcrypt from "bcrypt";
 import { Strategy } from "passport-local";
 import passport from "passport";
-import dotenv from "dotenv";
+import env from "dotenv";
 
 import pkg from "pg";
 import cors from "cors";
@@ -20,7 +20,7 @@ app.use(
   })
 );
 
-dotenv.config();
+env.config();
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -344,4 +344,5 @@ function checkRegisterPassword(password, reppeatedPassword) {
     return true;
   }
 }
+
 
