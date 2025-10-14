@@ -15,7 +15,7 @@ const app = express();
 const saltRounds = 6;
 app.use(
   cors({
-    origin: ["https://live-chat-itlion.s3-website.eu-north-1.amazonaws.com", "http://localhost:5173"],
+    origin: ["http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com", "http://localhost:5173"],
     methods: ["GET", "POST"],
   })
 );
@@ -25,7 +25,7 @@ env.config();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ["https://live-chat-itlion.s3-website.eu-north-1.amazonaws.com", "http://localhost:5173"],
+    origin: ["http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com", "http://localhost:5173"],
     methods: ["GET", "POST"],
   },
 });
@@ -344,3 +344,4 @@ function checkRegisterPassword(password, reppeatedPassword) {
     return true;
   }
 }
+
