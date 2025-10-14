@@ -85,7 +85,7 @@ io.on("connection", (socket) => {
         group_id,
       ]);
       const resCount = res.rowCount;
-      if (resCount > 10) {
+      if (resCount > 1000) {
         await pool.query(
           `
   WITH oldest AS (
@@ -344,6 +344,3 @@ function checkRegisterPassword(password, reppeatedPassword) {
     return true;
   }
 }
-
-
-
