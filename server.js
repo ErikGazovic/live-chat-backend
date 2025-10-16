@@ -189,7 +189,7 @@ app.get("/get-users", async (req, res) => {
 function sanitizeMessage(message) {
   return message
     .replace(/(https?:\/\/|www\.)[^\s]+/gi, "[odkaz odstránený]")
-    .replace(/(\+?\d[\d\s().-]{7,}\d)/g, "[číslo odstránené]");
+    .replace(/(\+?\d{1,4}[\s.-]?)?(\(?\d{2,4}\)?[\s.-]?)?(\d{2,4}[\s.-]?){2,3}\d{1,4}/g, "[číslo odstránené]");
 }
 
 
@@ -415,3 +415,4 @@ function checkRegisterPassword(password, reppeatedPassword) {
     return true;
   }
 }
+
