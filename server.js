@@ -4,6 +4,8 @@ import bcrypt from "bcrypt";
 import { Strategy } from "passport-local";
 import passport from "passport";
 import env from "dotenv";
+import pg from "pg";
+
 import pkg from "pg";
 import cors from "cors";
 import http from "http";
@@ -15,12 +17,12 @@ const saltRounds = 6;
 app.use(
   cors({
     origin: [
-      "http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com", "http://localhost:5173",
+      "http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com",
+      "http://localhost:5173",
     ],
     methods: ["GET", "POST"],
   })
 );
-app.use(express.json());
 
 env.config();
 
@@ -28,27 +30,29 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
-      "http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com", "http://localhost:5173",
+      "http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com",
+      "http://localhost:5173",
     ],
     methods: ["GET", "POST"],
   },
 });
-const {Pool} = pkg;
+console.log(process.env.DATABASE_URL);
+const { Pool } = pkg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    require: true,              // Enforce SSL
-    rejectUnauthorized: false,  // Render uses self-signed certs
+    require: true, // Enforce SSL
+    rejectUnauthorized: false, // Render uses self-signed certs
   },
 });
 
 //const db = new pg.Client({
-//  user: "postgres",
-//  host: "localhost",
-//  database: "ChatBox",
-//  password: "PostgresDBPass",
-//  port: 5432,
-//});
+//    user: "postgres",
+//    host: "localhost",
+//    database: "ChatBox",
+//    password: "PostgreSQL",
+//    port: process.env.DB_PORT,
+//  });
 //
 //db.connect();
 
@@ -63,7 +67,42 @@ async function createTables() {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS messages (
+    CREATE TABLE IF NOT EXISTS messages1 (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER NOT NULL,
+      username VARCHAR(100) NOT NULL,
+      sender_id VARCHAR(100),
+      text TEXT NOT NULL,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages2 (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER NOT NULL,
+      username VARCHAR(100) NOT NULL,
+      sender_id VARCHAR(100),
+      text TEXT NOT NULL,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await pool.query(`DROP TABLE IF EXISTS messages;`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages3 (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER NOT NULL,
+      username VARCHAR(100) NOT NULL,
+      sender_id VARCHAR(100),
+      text TEXT NOT NULL,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages4 (
       id SERIAL PRIMARY KEY,
       group_id INTEGER NOT NULL,
       username VARCHAR(100) NOT NULL,
@@ -80,27 +119,19 @@ createTables();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-const onlineUsers = new Map();
-
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
-
-    socket.on("registerUser", (username) => {
-    onlineUsers.set(username, socket.id);
-  });
 
   socket.on("send_message", async (data) => {
     const { group_id, username, sender_id, text } = data;
 
-    const cleanMessage = sanitizeMessage(text);
-
     try {
       const result = await pool.query(
-        "INSERT INTO messages (group_id, username, sender_id, text) VALUES ($1, $2, $3, $4) RETURNING *",
-        [group_id, username, sender_id, cleanMessage]
+        `INSERT INTO messages${group_id} (group_id, username, sender_id, text) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [group_id, username, sender_id, text]
       );
 
-      const res = await pool.query("SELECT * FROM messages WHERE group_id = $1", [
+      const res = await pool.query(`SELECT * FROM messages${group_id}`, [
         group_id,
       ]);
       const resCount = res.rowCount;
@@ -109,14 +140,13 @@ io.on("connection", (socket) => {
           `
   WITH oldest AS (
     SELECT id
-    FROM messages
-    WHERE group_id = $1
+    FROM messages${group_id}
     ORDER BY timestamp ASC
     LIMIT 500
   )
   DELETE FROM messages
   WHERE id IN (SELECT id FROM oldest)
-  AND (SELECT COUNT(*) FROM messages WHERE group_id = $1) > 1000
+  AND (SELECT COUNT(*) FROM messages${group_id}) > 1000
 `,
           [group_id]
         );
@@ -130,9 +160,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    for (const [user, id] of onlineUsers.entries()) {
-      if (id === socket.id) onlineUsers.delete(user);
-    }
+    console.log("User disconnected:", socket.id);
   });
 });
 
@@ -140,7 +168,7 @@ app.get("/get-messages/:group_id", async (req, res) => {
   const groupID = req.params.group_id;
   try {
     const result = await pool.query(
-      "SELECT * FROM messages WHERE group_id = $1 ORDER BY timestamp DESC",
+      `SELECT * FROM messages${groupID} ORDER BY timestamp DESC`,
       [groupID]
     );
     res.json(result.rows);
@@ -150,61 +178,9 @@ app.get("/get-messages/:group_id", async (req, res) => {
   }
 });
 
-app.post("/delete-user", async (req, res) => {
-  const {username} = req.body;
-  if (!username) {
-    return res.status(400).json({ error: "Username is required" });
-  }
-  try {
-    const result = await pool.query("DELETE FROM chat_users WHERE username = $1", [username]);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-        const socketId = onlineUsers.get(username);
-    if (socketId) {
-      io.to(socketId).emit("forceLogout");
-      onlineUsers.delete(username);
-    }
-    res
-      .status(200)
-      .json({ message: `Účet '${username}' bol úspešne odstránený.` });
-  } catch (err) {
-    console.log("Database error: ", err);
-  }
-});
-
-app.get("/get-users", async (req, res) => {
-    try {
-    const result = await pool.query(
-      "SELECT * FROM chat_users"
-    );
-    res.json(result.rows);
-  } catch {
-    console.error(err);
-    res.status(500).json({ error: "Database error" });
-  }
-})
-
-function sanitizeMessage(message) {
-  return message
-    .replace(/(https?:\/\/|www\.)[^\s]+/gi, "[odkaz odstránený]")
-    .replace(/(\+?\d{1,4}[\s.-]?)?(\(?\d{2,4}\)?[\s.-]?)?(\d{2,4}[\s.-]?){2,3}\d{1,4}/g, "[číslo odstránené]");
-}
-
-
 app.post("/register", async (req, res) => {
-  const { username, email, password, repeatedPassword, agrees } = req.body;
+  const { username, email, password, repeatedPassword } = req.body;
   let passwordMessage = "";
-  if (agrees === false) {
-    return res.json({
-        success: false,
-        errorType: "checkbox",
-        errorMessage: "Musíte súhlasiť so zásadami používania",
-        received: { username, email, password, repeatedPassword, agrees },
-        reply: `Wrong credentials on ${agrees}`,
-      });
-  }
   try {
     const checkResultEmail = await pool.query(
       "SELECT * FROM chat_users WHERE email = $1",
@@ -220,7 +196,7 @@ app.post("/register", async (req, res) => {
         success: false,
         errorType: "email",
         errorMessage: emailMessage,
-        received: { username, email, password, repeatedPassword, agrees },
+        received: { username, email, password, repeatedPassword },
         reply: `Wrong credentials on ${email}`,
       });
     } else if (username.length < 3) {
@@ -229,7 +205,7 @@ app.post("/register", async (req, res) => {
         success: false,
         errorType: "username",
         errorMessage: nameMessage,
-        received: { username, email, password, repeatedPassword, agrees },
+        received: { username, email, password, repeatedPassword },
         reply: `Wrong credentials on ${username}`,
       });
     } else if (checkResultUsername.rows.length > 0) {
@@ -238,7 +214,7 @@ app.post("/register", async (req, res) => {
         success: false,
         errorType: "username",
         errorMessage: nameMessage,
-        received: { username, email, password, repeatedPassword, agrees },
+        received: { username, email, password, repeatedPassword },
         reply: `Wrong credentials on ${username}`,
       });
     } else if (checkRegisterPassword(password, repeatedPassword)[0] == false) {
@@ -247,7 +223,7 @@ app.post("/register", async (req, res) => {
         success: false,
         errorType: "password",
         errorMessage: passwordMessage,
-        received: { username, email, password, repeatedPassword, agrees },
+        received: { username, email, password, repeatedPassword },
         reply: `Wrong credentials on ${password}`,
       });
     } else {
@@ -259,12 +235,13 @@ app.post("/register", async (req, res) => {
             "INSERT INTO chat_users (username, email, password) VALUES ($1, $2, $3) RETURNING *",
             [username, email, hash]
           );
+          console.log(result.rows[0].username);
           if (result.rows[0].username) {
             return res.json({
               success: true,
               errorType: null,
               message: "Účet bol úspešne vytvorený",
-              received: { username, email, password, repeatedPassword, agrees },
+              received: { username, email, password, repeatedPassword },
               reply: `Successfully registered on credentials ${
                 (username, email, password, repeatedPassword)
               }`,
@@ -272,7 +249,7 @@ app.post("/register", async (req, res) => {
           } else {
             return res.json({
               success: false,
-              received: { username, email, password, repeatedPassword, agrees },
+              received: { username, email, password, repeatedPassword },
               reply: `Something went wrong`,
             });
           }
@@ -415,4 +392,3 @@ function checkRegisterPassword(password, reppeatedPassword) {
     return true;
   }
 }
-
