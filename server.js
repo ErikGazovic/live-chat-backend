@@ -131,9 +131,7 @@ io.on("connection", (socket) => {
         [group_id, username, sender_id, text]
       );
 
-      const res = await pool.query(`SELECT * FROM messages${group_id}`, [
-        group_id,
-      ]);
+      const res = await pool.query(`SELECT * FROM messages${group_id}`);
       const resCount = res.rowCount;
       if (resCount > 1000) {
         await pool.query(
@@ -147,8 +145,7 @@ io.on("connection", (socket) => {
   DELETE FROM messages
   WHERE id IN (SELECT id FROM oldest)
   AND (SELECT COUNT(*) FROM messages${group_id}) > 1000
-`,
-          [group_id]
+`
         );
       }
 
@@ -168,8 +165,7 @@ app.get("/get-messages/:group_id", async (req, res) => {
   const groupID = req.params.group_id;
   try {
     const result = await pool.query(
-      `SELECT * FROM messages${groupID} ORDER BY timestamp DESC`,
-      [groupID]
+      `SELECT * FROM messages${groupID} ORDER BY timestamp DESC`
     );
     res.json(result.rows);
   } catch {
