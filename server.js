@@ -122,7 +122,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const connectedUsers = new Map();
 
 io.on("connection", (socket) => {
-  socket.on("register-user", (userId) => {
+  socket.on("registerUser", (userId) => {
     connectedUsers.set(userId, socket.id);
     console.log(`User ${userId} registered with socket ${socket.id}`);
   });
@@ -429,3 +429,4 @@ function checkRegisterPassword(password, reppeatedPassword) {
     return true;
   }
 }
+
