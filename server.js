@@ -119,8 +119,13 @@ createTables();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+const connectedUsers = new Map();
+
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  socket.on("register-user", (userId) => {
+    connectedUsers.set(userId, socket.id);
+    console.log(`User ${userId} registered with socket ${socket.id}`);
+  });
 
   socket.on("send_message", async (data) => {
     const { group_id, username, sender_id, text } = data;
@@ -142,7 +147,7 @@ io.on("connection", (socket) => {
     ORDER BY timestamp ASC
     LIMIT 500
   )
-  DELETE FROM messages
+  DELETE FROM messages${group_id}
   WHERE id IN (SELECT id FROM oldest)
   AND (SELECT COUNT(*) FROM messages${group_id}) > 1000
 `
@@ -157,6 +162,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    for (const [userId, id] of connectedUsers.entries()) {
+      if (id === socket.id) connectedUsers.delete(userId);
+    }
     console.log("User disconnected:", socket.id);
   });
 });
@@ -168,6 +176,39 @@ app.get("/get-messages/:group_id", async (req, res) => {
       `SELECT * FROM messages${groupID} ORDER BY timestamp DESC`
     );
     res.json(result.rows);
+  } catch {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+app.get("/get-users", async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM chat_users`);
+    res.json(result.rows);
+  } catch {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+app.post("/delete-user", async (req, res) => {
+  const { username } = req.body;
+  try {
+    await pool.query(
+      `DELETE FROM chat_users WHERE username = $1`,
+      [username]
+    );
+
+    const socketId = connectedUsers.get(username);
+    if (socketId) {
+      io.to(socketId).emit("forceLogout");
+      connectedUsers.delete(username);
+      console.log(`User ${username} logged out live`);
+    }
+    return res.json({
+      message: `Používateľ ${username} bol úspešne odtránený`,
+    });
   } catch {
     console.error(err);
     res.status(500).json({ error: "Database error" });
