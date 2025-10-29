@@ -17,8 +17,8 @@ const saltRounds = 6;
 app.use(
   cors({
     origin: [
-      "http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com",
-      "http://localhost:5173",
+      "https://chat.profesorky.sk",
+      "http://localhost:5173"
     ],
     methods: ["GET", "POST"],
   })
@@ -30,8 +30,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
-      "http://live-chat-itlion.s3-website.eu-north-1.amazonaws.com",
-      "http://localhost:5173",
+      "https://chat.profesorky.sk",
+      "http://localhost:5173"
     ],
     methods: ["GET", "POST"],
   },
@@ -429,4 +429,5 @@ function checkRegisterPassword(password, reppeatedPassword) {
     return true;
   }
 }
+
 
